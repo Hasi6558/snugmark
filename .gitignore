@@ -28,6 +28,9 @@ coverage/
 dist/
 build/
 
+# Launcher executable
+snugmark.exe
+
 # Cache
 .cache/
 .npm/
