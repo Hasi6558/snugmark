@@ -3,6 +3,7 @@ import cors from "cors";
 import { env } from "./env.js";
 import { errorHandler, notFound } from "./middleware/error.js";
 import authRoutes from "./routes/auth.routes.js";
+import collectionRoutes from "./routes/collections.routes.js";
 
 // Build the Express app. Kept separate from the server bootstrap (index.ts) so
 // it can be imported directly by tests without opening a port.
@@ -18,9 +19,9 @@ export function createApp(): Express {
   });
 
   app.use("/api/auth", authRoutes);
+  app.use("/api/collections", collectionRoutes);
 
   // Mounted in later phases:
-  //   app.use("/api/collections", collectionRoutes);
   //   app.use("/api/links", linkRoutes);
   //   app.use("/api/tags", tagRoutes);
   //   app.use("/api/metadata", metadataRoutes);
