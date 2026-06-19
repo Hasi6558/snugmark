@@ -6,6 +6,7 @@ import authRoutes from "./routes/auth.routes.js";
 import collectionRoutes from "./routes/collections.routes.js";
 import tagRoutes from "./routes/tags.routes.js";
 import linkRoutes from "./routes/links.routes.js";
+import metadataRoutes from "./routes/metadata.routes.js";
 
 // Build the Express app. Kept separate from the server bootstrap (index.ts) so
 // it can be imported directly by tests without opening a port.
@@ -24,8 +25,8 @@ export function createApp(): Express {
   app.use("/api/collections", collectionRoutes);
   app.use("/api/tags", tagRoutes);
   app.use("/api/links", linkRoutes);
+  app.use("/api/metadata", metadataRoutes);
 
-  // Mounted in later phases:
   //   app.use("/api/links", linkRoutes);
   //   app.use("/api/tags", tagRoutes);
   //   app.use("/api/metadata", metadataRoutes);

@@ -1,4 +1,6 @@
-import { createContext, useContext, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, type ReactNode } from "react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { api } from "./api/client";
 
 export type Tag = { id: string; name: string; colorIndex: number };
 
@@ -27,6 +29,16 @@ export type Collection = {
 
 export type View = "home" | "collection";
 
+// The API returns ISO date strings; normalize to timestamps for the frontend.
+type ApiLink = Omit<Link, "lastVisitedAt"> & { lastVisitedAt: string | null };
+
+function normalizeLink(l: ApiLink): Link {
+  return {
+    ...l,
+    lastVisitedAt: l.lastVisitedAt ? new Date(l.lastVisitedAt).getTime() : null,
+  };
+}
+
 type Ctx = {
   collections: Collection[];
   links: Link[];
@@ -39,7 +51,9 @@ type Ctx = {
   renameCollection: (id: string, name: string) => void;
   deleteCollection: (id: string) => void;
   reorderCollections: (next: Collection[]) => void;
-  addLink: (data: Omit<Link, "id" | "position" | "visitCount" | "lastVisitedAt" | "isRead">) => void;
+  addLink: (
+    data: Omit<Link, "id" | "position" | "visitCount" | "lastVisitedAt" | "isRead">,
+  ) => void;
   updateLink: (id: string, data: Partial<Link>) => void;
   deleteLink: (id: string) => void;
   toggleFavourite: (id: string) => void;
@@ -47,187 +61,310 @@ type Ctx = {
   recordVisit: (id: string) => void;
   moveLink: (id: string, targetCollectionId: string) => void;
   reorderLinks: (collectionId: string, next: Link[]) => void;
-  addTag: (name: string) => Tag;
-  lockCollection: (id: string, password: string) => boolean;
-  removeLock: (id: string, password: string) => boolean;
-  unlockCollection: (id: string, password: string) => boolean;
+  addTag: (name: string) => Promise<Tag>;
+  lockCollection: (id: string, password: string) => Promise<boolean>;
+  removeLock: (id: string, password: string) => Promise<boolean>;
+  unlockCollection: (id: string, password: string) => Promise<boolean>;
   isUnlocked: (id: string) => boolean;
-  verifyPassword: (password: string) => boolean;
+  verifyPassword: (password: string) => Promise<boolean>;
 };
 
 const StoreCtx = createContext<Ctx | null>(null);
 
-const uid = () => Math.random().toString(36).slice(2, 10);
-
-const seedTags: Tag[] = [
-  { id: "t1", name: "design", colorIndex: 1 },
-  { id: "t2", name: "reading", colorIndex: 2 },
-  { id: "t3", name: "tools", colorIndex: 3 },
-  { id: "t4", name: "inspiration", colorIndex: 5 },
-];
-
-const seedCollections: Collection[] = [
-  { id: "c1", parentId: null, name: "Reading list", order: 0 },
-  { id: "c2", parentId: null, name: "Design", order: 1 },
-  { id: "c3", parentId: "c2", name: "Typography", order: 0 },
-  { id: "c4", parentId: "c2", name: "Color", order: 1 },
-  { id: "c5", parentId: null, name: "Dev tools", order: 2 },
-];
-
-const fav = (domain: string) =>
-  `https://www.google.com/s2/favicons?domain=${domain}&sz=64`;
-
-const now = Date.now();
-const mkLink = (l: Omit<Link, "visitCount" | "lastVisitedAt" | "isRead"> & Partial<Pick<Link, "visitCount" | "lastVisitedAt" | "isRead">>): Link => ({
-  visitCount: 0, lastVisitedAt: null, isRead: false, ...l,
-});
-
-const seedLinks: Link[] = [
-  mkLink({
-    id: "l1", collectionId: "c1", url: "https://paulgraham.com/greatwork.html",
-    title: "How to Do Great Work", description: "Paul Graham's long essay on doing meaningful work.",
-    favicon: fav("paulgraham.com"), isFavourite: true, position: 0, tagIds: ["t2", "t4"],
-    visitCount: 12, lastVisitedAt: now - 1000 * 60 * 60 * 2, isRead: true,
-  }),
-  mkLink({
-    id: "l2", collectionId: "c1", url: "https://every.to/",
-    title: "Every — Writing about business, AI and the internet",
-    description: "A bundle of thoughtful newsletters worth a slow morning read.",
-    favicon: fav("every.to"), isFavourite: false, position: 1, tagIds: ["t2"],
-    visitCount: 3, lastVisitedAt: now - 1000 * 60 * 60 * 26,
-  }),
-  mkLink({
-    id: "l3", collectionId: "c3", url: "https://practicaltypography.com/",
-    title: "Butterick's Practical Typography",
-    description: "A free book on type that genuinely changes how you set text.",
-    favicon: fav("practicaltypography.com"), isFavourite: true, position: 0, tagIds: ["t1"],
-    visitCount: 8, lastVisitedAt: now - 1000 * 60 * 30, isRead: true,
-  }),
-  mkLink({
-    id: "l4", collectionId: "c4", url: "https://oklch.com/",
-    title: "OKLCH Color Picker & Converter",
-    description: "Pick perceptually uniform colors with live previews.",
-    favicon: fav("oklch.com"), isFavourite: false, position: 0, tagIds: ["t1", "t3"],
-    visitCount: 15, lastVisitedAt: now - 1000 * 60 * 10,
-  }),
-  mkLink({
-    id: "l5", collectionId: "c5", url: "https://github.com/features/copilot",
-    title: "GitHub Copilot",
-    description: "AI pair programmer that lives in your editor.",
-    favicon: fav("github.com"), isFavourite: false, position: 0, tagIds: ["t3"],
-    visitCount: 5, lastVisitedAt: now - 1000 * 60 * 60 * 5,
-  }),
-  mkLink({
-    id: "l6", collectionId: "c5", url: "https://raycast.com/",
-    title: "Raycast — Your shortcut to everything",
-    description: "A keyboard-first launcher that replaces a dozen tools.",
-    favicon: fav("raycast.com"), isFavourite: true, position: 1, tagIds: ["t3"],
-    visitCount: 22, lastVisitedAt: now - 1000 * 60 * 60 * 1, isRead: true,
-  }),
-];
-
 export function LinkboardProvider({ children }: { children: ReactNode }) {
-  const [collections, setCollections] = useState<Collection[]>(seedCollections);
-  const [links, setLinks] = useState<Link[]>(seedLinks);
-  const [tags, setTags] = useState<Tag[]>(seedTags);
+  const queryClient = useQueryClient();
   const [view, setView] = useState<View>("home");
   const [selectedCollectionId, setSelectedCollectionIdState] = useState<string | null>(null);
   const [unlockedIds, setUnlockedIds] = useState<Set<string>>(new Set());
 
-  const verifyPassword = (password: string) => {
-    if (typeof window === "undefined") return false;
-    const stored = localStorage.getItem("linkboard.password");
-    if (!stored) return password === "password";
-    return password === stored;
-  };
+  // ── Queries ───────────────────────────────────────────────────────────────
 
-  const value: Ctx = useMemo(() => ({
-    collections, links, tags, view, selectedCollectionId,
-    goHome: () => { setView("home"); setSelectedCollectionIdState(null); },
-    setSelectedCollectionId: (id) => {
-      setSelectedCollectionIdState(id);
-      if (id) setView("collection");
-    },
-    addCollection: (name, parentId) => {
-      const siblings = collections.filter((c) => c.parentId === parentId);
-      const next: Collection = { id: uid(), parentId, name, order: siblings.length };
-      setCollections((prev) => [...prev, next]);
-      setSelectedCollectionIdState(next.id);
+  const { data: collectionsData } = useQuery({
+    queryKey: ["collections"],
+    queryFn: () => api.get<{ collections: Collection[] }>("/collections"),
+  });
+
+  const { data: linksData } = useQuery({
+    queryKey: ["links"],
+    queryFn: () => api.get<{ links: ApiLink[] }>("/links"),
+  });
+
+  const { data: tagsData } = useQuery({
+    queryKey: ["tags"],
+    queryFn: () => api.get<{ tags: Tag[] }>("/tags"),
+  });
+
+  const collections = collectionsData?.collections ?? [];
+  const links = (linksData?.links ?? []).map(normalizeLink);
+  const tags = tagsData?.tags ?? [];
+
+  // ── Collection mutations ──────────────────────────────────────────────────
+
+  const addCollectionMutation = useMutation({
+    mutationFn: ({ name, parentId }: { name: string; parentId: string | null }) =>
+      api.post<{ collection: Collection }>("/collections", { name, parentId }),
+    onSuccess: ({ collection }) => {
+      void queryClient.invalidateQueries({ queryKey: ["collections"] });
+      setSelectedCollectionIdState(collection.id);
       setView("collection");
     },
-    renameCollection: (id, name) =>
-      setCollections((prev) => prev.map((c) => (c.id === id ? { ...c, name } : c))),
-    deleteCollection: (id) => {
-      const toRemove = new Set<string>([id]);
-      collections.forEach((c) => { if (c.parentId === id) toRemove.add(c.id); });
-      setCollections((prev) => prev.filter((c) => !toRemove.has(c.id)));
-      setLinks((prev) => prev.filter((l) => !toRemove.has(l.collectionId)));
+  });
+
+  const renameCollectionMutation = useMutation({
+    mutationFn: ({ id, name }: { id: string; name: string }) =>
+      api.patch(`/collections/${id}`, { name }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["collections"] }),
+  });
+
+  const deleteCollectionMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/collections/${id}`),
+    onSuccess: (_data, id) => {
+      const cols =
+        queryClient.getQueryData<{ collections: Collection[] }>(["collections"])?.collections ?? [];
+      const toRemove = new Set([id, ...cols.filter((c) => c.parentId === id).map((c) => c.id)]);
       if (selectedCollectionId && toRemove.has(selectedCollectionId)) {
         setSelectedCollectionIdState(null);
         setView("home");
       }
+      void queryClient.invalidateQueries({ queryKey: ["collections"] });
+      void queryClient.invalidateQueries({ queryKey: ["links"] });
     },
-    reorderCollections: (next) => setCollections(next),
-    addLink: (data) => {
-      const siblings = links.filter((l) => l.collectionId === data.collectionId);
-      setLinks((prev) => [...prev, {
-        ...data, id: uid(), position: siblings.length,
-        visitCount: 0, lastVisitedAt: null, isRead: false,
-      }]);
+  });
+
+  const reorderCollectionsMutation = useMutation({
+    mutationFn: (orderedIds: string[]) => api.patch("/collections/reorder", { orderedIds }),
+    onMutate: async (orderedIds) => {
+      await queryClient.cancelQueries({ queryKey: ["collections"] });
+      const prev = queryClient.getQueryData(["collections"]);
+      queryClient.setQueryData(
+        ["collections"],
+        (old: { collections: Collection[] } | undefined) => ({
+          collections: orderedIds
+            .map((id, i) => {
+              const c = old?.collections.find((c) => c.id === id);
+              return c ? { ...c, order: i } : null;
+            })
+            .filter(Boolean) as Collection[],
+        }),
+      );
+      return { prev };
     },
-    updateLink: (id, data) =>
-      setLinks((prev) => prev.map((l) => (l.id === id ? { ...l, ...data } : l))),
-    deleteLink: (id) => setLinks((prev) => prev.filter((l) => l.id !== id)),
-    toggleFavourite: (id) =>
-      setLinks((prev) => prev.map((l) => (l.id === id ? { ...l, isFavourite: !l.isFavourite } : l))),
-    toggleRead: (id) =>
-      setLinks((prev) => prev.map((l) => (l.id === id ? { ...l, isRead: !l.isRead } : l))),
-    recordVisit: (id) =>
-      setLinks((prev) => prev.map((l) => (l.id === id
-        ? { ...l, visitCount: l.visitCount + 1, lastVisitedAt: Date.now(), isRead: true }
-        : l))),
-    moveLink: (id, targetCollectionId) => {
-      setLinks((prev) => {
-        const link = prev.find((l) => l.id === id);
-        if (!link || link.collectionId === targetCollectionId) return prev;
-        const targetSiblings = prev.filter((l) => l.collectionId === targetCollectionId);
-        return prev.map((l) => (l.id === id
-          ? { ...l, collectionId: targetCollectionId, position: targetSiblings.length }
-          : l));
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["collections"], ctx.prev);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["collections"] }),
+  });
+
+  const lockMutation = useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      api.post(`/collections/${id}/lock`, { password }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["collections"] }),
+  });
+
+  const removeLockMutation = useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      api.post(`/collections/${id}/remove-lock`, { password }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["collections"] }),
+  });
+
+  const unlockMutation = useMutation({
+    mutationFn: ({ id, password }: { id: string; password: string }) =>
+      api.post(`/collections/${id}/unlock`, { password }),
+  });
+
+  // ── Link mutations ────────────────────────────────────────────────────────
+
+  const addLinkMutation = useMutation({
+    mutationFn: (data: Omit<Link, "id" | "position" | "visitCount" | "lastVisitedAt" | "isRead">) =>
+      api.post("/links", data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["links"] }),
+  });
+
+  const updateLinkMutation = useMutation({
+    mutationFn: ({ id, data }: { id: string; data: Partial<Link> }) =>
+      api.patch(`/links/${id}`, data),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["links"] }),
+  });
+
+  const deleteLinkMutation = useMutation({
+    mutationFn: (id: string) => api.delete(`/links/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["links"] }),
+  });
+
+  const toggleFavouriteMutation = useMutation({
+    mutationFn: ({ id, isFavourite }: { id: string; isFavourite: boolean }) =>
+      api.patch(`/links/${id}`, { isFavourite }),
+    onMutate: async ({ id, isFavourite }) => {
+      await queryClient.cancelQueries({ queryKey: ["links"] });
+      const prev = queryClient.getQueryData(["links"]);
+      queryClient.setQueryData(["links"], (old: { links: ApiLink[] } | undefined) => ({
+        links: old?.links.map((l) => (l.id === id ? { ...l, isFavourite } : l)) ?? [],
+      }));
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["links"], ctx.prev);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["links"] }),
+  });
+
+  const toggleReadMutation = useMutation({
+    mutationFn: ({ id, isRead }: { id: string; isRead: boolean }) =>
+      api.patch(`/links/${id}`, { isRead }),
+    onMutate: async ({ id, isRead }) => {
+      await queryClient.cancelQueries({ queryKey: ["links"] });
+      const prev = queryClient.getQueryData(["links"]);
+      queryClient.setQueryData(["links"], (old: { links: ApiLink[] } | undefined) => ({
+        links: old?.links.map((l) => (l.id === id ? { ...l, isRead } : l)) ?? [],
+      }));
+      return { prev };
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["links"], ctx.prev);
+    },
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["links"] }),
+  });
+
+  const recordVisitMutation = useMutation({
+    mutationFn: (id: string) => api.post(`/links/${id}/visit`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["links"] }),
+  });
+
+  const moveLinkMutation = useMutation({
+    mutationFn: ({ id, targetCollectionId }: { id: string; targetCollectionId: string }) =>
+      api.patch(`/links/${id}/move`, { targetCollectionId }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["links"] }),
+  });
+
+  const reorderLinksMutation = useMutation({
+    mutationFn: ({ collectionId, orderedIds }: { collectionId: string; orderedIds: string[] }) =>
+      api.patch("/links/reorder", { collectionId, orderedIds }),
+    onMutate: async ({ collectionId, orderedIds }) => {
+      await queryClient.cancelQueries({ queryKey: ["links"] });
+      const prev = queryClient.getQueryData(["links"]);
+      queryClient.setQueryData(["links"], (old: { links: ApiLink[] } | undefined) => {
+        const others = old?.links.filter((l) => l.collectionId !== collectionId) ?? [];
+        const reordered = orderedIds
+          .map((id, i) => {
+            const l = old?.links.find((l) => l.id === id);
+            return l ? { ...l, position: i } : null;
+          })
+          .filter(Boolean) as ApiLink[];
+        return { links: [...others, ...reordered] };
       });
+      return { prev };
     },
-    reorderLinks: (collectionId, next) => {
-      const others = links.filter((l) => l.collectionId !== collectionId);
-      const repositioned = next.map((l, i) => ({ ...l, position: i }));
-      setLinks([...others, ...repositioned]);
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) queryClient.setQueryData(["links"], ctx.prev);
     },
-    addTag: (name) => {
-      const existing = tags.find((t) => t.name.toLowerCase() === name.toLowerCase());
-      if (existing) return existing;
-      const t: Tag = { id: uid(), name, colorIndex: ((tags.length % 6) + 1) };
-      setTags((prev) => [...prev, t]);
-      return t;
+    onSettled: () => queryClient.invalidateQueries({ queryKey: ["links"] }),
+  });
+
+  // ── Tag mutations ─────────────────────────────────────────────────────────
+
+  const addTagMutation = useMutation({
+    mutationFn: (name: string) => api.post<{ tag: Tag }>("/tags", { name }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["tags"] }),
+  });
+
+  // ── Context value ─────────────────────────────────────────────────────────
+
+  const value: Ctx = {
+    collections,
+    links,
+    tags,
+    view,
+    selectedCollectionId,
+
+    goHome: () => {
+      setView("home");
+      setSelectedCollectionIdState(null);
     },
-    lockCollection: (id, password) => {
-      if (!verifyPassword(password)) return false;
-      setCollections((prev) => prev.map((c) => (c.id === id ? { ...c, locked: true } : c)));
-      setUnlockedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
-      return true;
+    setSelectedCollectionId: (id) => {
+      setSelectedCollectionIdState(id);
+      if (id) setView("collection");
     },
-    removeLock: (id, password) => {
-      if (!verifyPassword(password)) return false;
-      setCollections((prev) => prev.map((c) => (c.id === id ? { ...c, locked: false } : c)));
-      setUnlockedIds((prev) => { const n = new Set(prev); n.delete(id); return n; });
-      return true;
+
+    addCollection: (name, parentId) => addCollectionMutation.mutate({ name, parentId }),
+    renameCollection: (id, name) => renameCollectionMutation.mutate({ id, name }),
+    deleteCollection: (id) => deleteCollectionMutation.mutate(id),
+    reorderCollections: (next) => reorderCollectionsMutation.mutate(next.map((c) => c.id)),
+
+    addLink: (data) => addLinkMutation.mutate(data),
+    updateLink: (id, data) => updateLinkMutation.mutate({ id, data }),
+    deleteLink: (id) => deleteLinkMutation.mutate(id),
+    toggleFavourite: (id) => {
+      const current = queryClient
+        .getQueryData<{ links: ApiLink[] }>(["links"])
+        ?.links.find((l) => l.id === id);
+      if (current) toggleFavouriteMutation.mutate({ id, isFavourite: !current.isFavourite });
     },
-    unlockCollection: (id, password) => {
-      if (!verifyPassword(password)) return false;
-      setUnlockedIds((prev) => { const n = new Set(prev); n.add(id); return n; });
-      return true;
+    toggleRead: (id) => {
+      const current = queryClient
+        .getQueryData<{ links: ApiLink[] }>(["links"])
+        ?.links.find((l) => l.id === id);
+      if (current) toggleReadMutation.mutate({ id, isRead: !current.isRead });
+    },
+    recordVisit: (id) => recordVisitMutation.mutate(id),
+    moveLink: (id, targetCollectionId) => moveLinkMutation.mutate({ id, targetCollectionId }),
+    reorderLinks: (collectionId, next) =>
+      reorderLinksMutation.mutate({ collectionId, orderedIds: next.map((l) => l.id) }),
+
+    addTag: async (name) => {
+      const { tag } = await addTagMutation.mutateAsync(name);
+      return tag;
+    },
+
+    lockCollection: async (id, password) => {
+      try {
+        await lockMutation.mutateAsync({ id, password });
+        setUnlockedIds((prev) => {
+          const n = new Set(prev);
+          n.delete(id);
+          return n;
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    removeLock: async (id, password) => {
+      try {
+        await removeLockMutation.mutateAsync({ id, password });
+        setUnlockedIds((prev) => {
+          const n = new Set(prev);
+          n.delete(id);
+          return n;
+        });
+        return true;
+      } catch {
+        return false;
+      }
+    },
+    unlockCollection: async (id, password) => {
+      try {
+        await unlockMutation.mutateAsync({ id, password });
+        setUnlockedIds((prev) => {
+          const n = new Set(prev);
+          n.add(id);
+          return n;
+        });
+        return true;
+      } catch {
+        return false;
+      }
     },
     isUnlocked: (id) => unlockedIds.has(id),
-    verifyPassword,
-  }), [collections, links, tags, view, selectedCollectionId, unlockedIds]);
+
+    verifyPassword: async (password) => {
+      try {
+        const { valid } = await api.post<{ valid: boolean }>("/auth/verify-password", { password });
+        return valid;
+      } catch {
+        return false;
+      }
+    },
+  };
 
   return <StoreCtx.Provider value={value}>{children}</StoreCtx.Provider>;
 }

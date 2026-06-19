@@ -1,30 +1,53 @@
 import { useMemo, useState } from "react";
 import { useStore, type Collection } from "@/lib/linkboard-store";
 import {
-  DndContext, PointerSensor, useSensor, useSensors, closestCenter,
+  DndContext,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  closestCenter,
   type DragEndEvent,
 } from "@dnd-kit/core";
 import {
-  SortableContext, arrayMove, useSortable, verticalListSortingStrategy,
+  SortableContext,
+  arrayMove,
+  useSortable,
+  verticalListSortingStrategy,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Bookmark, ChevronRight, MoreHorizontal, Plus, Pencil, Trash2, FolderPlus, Lock, Unlock, LockOpen, Home } from "lucide-react";
+import {
+  Bookmark,
+  ChevronRight,
+  MoreHorizontal,
+  Plus,
+  Pencil,
+  Trash2,
+  FolderPlus,
+  Lock,
+  Unlock,
+  LockOpen,
+  Home,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { PasswordDialog } from "./PasswordDialog";
 
 export function Sidebar() {
-  const { collections, selectedCollectionId, view, goHome, addCollection, reorderCollections } = useStore();
+  const { collections, selectedCollectionId, view, goHome, addCollection, reorderCollections } =
+    useStore();
   const [addingRoot, setAddingRoot] = useState(false);
   const [newName, setNewName] = useState("");
 
   const topLevel = useMemo(
     () => collections.filter((c) => c.parentId === null).sort((a, b) => a.order - b.order),
-    [collections]
+    [collections],
   );
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
@@ -42,7 +65,8 @@ export function Sidebar() {
 
   const commitAdd = () => {
     if (newName.trim()) addCollection(newName.trim(), null);
-    setNewName(""); setAddingRoot(false);
+    setNewName("");
+    setAddingRoot(false);
   };
 
   return (
@@ -83,12 +107,16 @@ export function Sidebar() {
         {addingRoot ? (
           <div className="mt-2 px-2">
             <Input
-              autoFocus value={newName}
+              autoFocus
+              value={newName}
               onChange={(e) => setNewName(e.target.value)}
               onBlur={commitAdd}
               onKeyDown={(e) => {
                 if (e.key === "Enter") commitAdd();
-                if (e.key === "Escape") { setNewName(""); setAddingRoot(false); }
+                if (e.key === "Escape") {
+                  setNewName("");
+                  setAddingRoot(false);
+                }
               }}
               placeholder="Collection name"
               className="h-9 rounded-lg"
@@ -124,14 +152,21 @@ export function Sidebar() {
 
 function CollectionRow({ collection }: { collection: Collection }) {
   const {
-    collections, selectedCollectionId, setSelectedCollectionId,
-    addCollection, renameCollection, deleteCollection,
-    lockCollection, removeLock, unlockCollection, isUnlocked,
+    collections,
+    selectedCollectionId,
+    setSelectedCollectionId,
+    addCollection,
+    renameCollection,
+    deleteCollection,
+    lockCollection,
+    removeLock,
+    unlockCollection,
+    isUnlocked,
   } = useStore();
 
   const children = useMemo(
     () => collections.filter((c) => c.parentId === collection.id).sort((a, b) => a.order - b.order),
-    [collections, collection.id]
+    [collections, collection.id],
   );
 
   const [open, setOpen] = useState(true);
@@ -146,8 +181,10 @@ function CollectionRow({ collection }: { collection: Collection }) {
   const unlocked = isUnlocked(collection.id);
   const isHidden = locked && !unlocked;
 
-  const { attributes, listeners, setNodeRef, transform, transition, isDragging } =
-    useSortable({ id: collection.id, disabled: !isTop });
+  const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({
+    id: collection.id,
+    disabled: !isTop,
+  });
   const style = {
     transform: CSS.Transform.toString(transform),
     transition,
@@ -176,7 +213,9 @@ function CollectionRow({ collection }: { collection: Collection }) {
               className="flex h-7 w-5 items-center justify-center text-muted-foreground"
               aria-label="Toggle"
             >
-              <ChevronRight className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-90" : ""}`} />
+              <ChevronRight
+                className={`h-3.5 w-3.5 transition-transform ${open ? "rotate-90" : ""}`}
+              />
             </button>
           )
         ) : (
@@ -185,19 +224,32 @@ function CollectionRow({ collection }: { collection: Collection }) {
 
         {renaming ? (
           <Input
-            autoFocus value={nameDraft}
+            autoFocus
+            value={nameDraft}
             onChange={(e) => setNameDraft(e.target.value)}
-            onBlur={() => { renameCollection(collection.id, nameDraft.trim() || collection.name); setRenaming(false); }}
+            onBlur={() => {
+              renameCollection(collection.id, nameDraft.trim() || collection.name);
+              setRenaming(false);
+            }}
             onKeyDown={(e) => {
-              if (e.key === "Enter") { renameCollection(collection.id, nameDraft.trim() || collection.name); setRenaming(false); }
-              if (e.key === "Escape") { setNameDraft(collection.name); setRenaming(false); }
+              if (e.key === "Enter") {
+                renameCollection(collection.id, nameDraft.trim() || collection.name);
+                setRenaming(false);
+              }
+              if (e.key === "Escape") {
+                setNameDraft(collection.name);
+                setRenaming(false);
+              }
             }}
             className="h-7 flex-1 rounded-md"
           />
         ) : (
           <button
             onClick={() => {
-              if (isHidden) { setLockDialog("unlock"); return; }
+              if (isHidden) {
+                setLockDialog("unlock");
+                return;
+              }
               setSelectedCollectionId(collection.id);
             }}
             {...(isTop && !isHidden ? attributes : {})}
@@ -220,11 +272,21 @@ function CollectionRow({ collection }: { collection: Collection }) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end" className="rounded-xl">
             {isTop && !isHidden && (
-              <DropdownMenuItem onClick={() => { setAddingChild(true); setOpen(true); }}>
+              <DropdownMenuItem
+                onClick={() => {
+                  setAddingChild(true);
+                  setOpen(true);
+                }}
+              >
                 <FolderPlus className="mr-2 h-4 w-4" /> Add sub-collection
               </DropdownMenuItem>
             )}
-            <DropdownMenuItem onClick={() => { setNameDraft(collection.name); setRenaming(true); }}>
+            <DropdownMenuItem
+              onClick={() => {
+                setNameDraft(collection.name);
+                setRenaming(true);
+              }}
+            >
               <Pencil className="mr-2 h-4 w-4" /> Rename
             </DropdownMenuItem>
             {isTop && !locked && (
@@ -249,22 +311,30 @@ function CollectionRow({ collection }: { collection: Collection }) {
 
       {isTop && open && !isHidden && (
         <ul className="ml-5 mt-0.5 space-y-0.5 border-l pl-2">
-          {children.map((c) => <CollectionRow key={c.id} collection={c} />)}
+          {children.map((c) => (
+            <CollectionRow key={c.id} collection={c} />
+          ))}
           {addingChild ? (
             <li>
               <Input
-                autoFocus value={childName}
+                autoFocus
+                value={childName}
                 onChange={(e) => setChildName(e.target.value)}
                 onBlur={() => {
                   if (childName.trim()) addCollection(childName.trim(), collection.id);
-                  setChildName(""); setAddingChild(false);
+                  setChildName("");
+                  setAddingChild(false);
                 }}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") {
                     if (childName.trim()) addCollection(childName.trim(), collection.id);
-                    setChildName(""); setAddingChild(false);
+                    setChildName("");
+                    setAddingChild(false);
                   }
-                  if (e.key === "Escape") { setChildName(""); setAddingChild(false); }
+                  if (e.key === "Escape") {
+                    setChildName("");
+                    setAddingChild(false);
+                  }
                 }}
                 placeholder="Sub-collection name"
                 className="h-7 rounded-md text-sm"
@@ -297,29 +367,31 @@ function CollectionRow({ collection }: { collection: Collection }) {
 
       <PasswordDialog
         open={lockDialog !== null}
-        onOpenChange={(v) => { if (!v) setLockDialog(null); }}
+        onOpenChange={(v) => {
+          if (!v) setLockDialog(null);
+        }}
         title={
-          lockDialog === "lock" ? `Lock "${collection.name}"?`
-          : lockDialog === "remove" ? `Remove lock from "${collection.name}"?`
-          : `Unlock "${collection.name}"`
+          lockDialog === "lock"
+            ? `Lock "${collection.name}"?`
+            : lockDialog === "remove"
+              ? `Remove lock from "${collection.name}"?`
+              : `Unlock "${collection.name}"`
         }
         description={
           lockDialog === "lock"
             ? "Your account password will be required to view this collection."
             : lockDialog === "remove"
-            ? "Confirm your password to remove the lock."
-            : "Enter your account password to view this collection."
+              ? "Confirm your password to remove the lock."
+              : "Enter your account password to view this collection."
         }
         confirmLabel={
-          lockDialog === "lock" ? "Lock"
-          : lockDialog === "remove" ? "Remove lock"
-          : "Unlock"
+          lockDialog === "lock" ? "Lock" : lockDialog === "remove" ? "Remove lock" : "Unlock"
         }
-        onSubmit={(pw) => {
+        onSubmit={async (pw) => {
           let ok = false;
-          if (lockDialog === "lock") ok = lockCollection(collection.id, pw);
-          else if (lockDialog === "remove") ok = removeLock(collection.id, pw);
-          else if (lockDialog === "unlock") ok = unlockCollection(collection.id, pw);
+          if (lockDialog === "lock") ok = await lockCollection(collection.id, pw);
+          else if (lockDialog === "remove") ok = await removeLock(collection.id, pw);
+          else if (lockDialog === "unlock") ok = await unlockCollection(collection.id, pw);
           if (ok) setLockDialog(null);
           return ok;
         }}
