@@ -3,6 +3,7 @@ import { Collection } from "../models/Collection.js";
 import { Link } from "../models/Link.js";
 import { AppError } from "../middleware/error.js";
 import { verifyUserPassword } from "./auth.service.js";
+import { signUnlockToken } from "../lib/jwt.js";
 
 async function getOwned(id: string, userId: string) {
   if (!Types.ObjectId.isValid(id)) {
@@ -80,4 +81,5 @@ export async function removeLock(userId: string, id: string, password: string) {
 export async function unlockCollection(userId: string, id: string, password: string) {
   await requireValidPassword(userId, password);
   await getOwned(id, userId);
+  return { unlockToken: signUnlockToken(id, userId) };
 }

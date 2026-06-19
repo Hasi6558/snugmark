@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
+import { createContext, useContext, useState, useMemo, type ReactNode } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { api } from "./api/client";
 
@@ -75,7 +75,14 @@ export function LinkboardProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [view, setView] = useState<View>("home");
   const [selectedCollectionId, setSelectedCollectionIdState] = useState<string | null>(null);
-  const [unlockedIds, setUnlockedIds] = useState<Set<string>>(new Set());
+  // Maps collectionId → signed unlock token (1 h JWT). Used as the X-Unlock-Tokens header.
+  const [unlockedTokens, setUnlockedTokens] = useState<Map<string, string>>(new Map());
+
+  // Stable comma-separated string for use as part of the links query key and header.
+  const tokenHeader = useMemo(
+    () => Array.from(unlockedTokens.values()).join(","),
+    [unlockedTokens],
+  );
 
   // ── Queries ───────────────────────────────────────────────────────────────
 
@@ -85,8 +92,12 @@ export function LinkboardProvider({ children }: { children: ReactNode }) {
   });
 
   const { data: linksData } = useQuery({
-    queryKey: ["links"],
-    queryFn: () => api.get<{ links: ApiLink[] }>("/links"),
+    queryKey: ["links", tokenHeader],
+    queryFn: () =>
+      api.get<{ links: ApiLink[] }>(
+        "/links",
+        tokenHeader ? { "X-Unlock-Tokens": tokenHeader } : undefined,
+      ),
   });
 
   const { data: tagsData } = useQuery({
@@ -97,6 +108,8 @@ export function LinkboardProvider({ children }: { children: ReactNode }) {
   const collections = collectionsData?.collections ?? [];
   const links = (linksData?.links ?? []).map(normalizeLink);
   const tags = tagsData?.tags ?? [];
+
+  const linksKey = ["links", tokenHeader] as const;
 
   // ── Collection mutations ──────────────────────────────────────────────────
 
@@ -169,7 +182,7 @@ export function LinkboardProvider({ children }: { children: ReactNode }) {
 
   const unlockMutation = useMutation({
     mutationFn: ({ id, password }: { id: string; password: string }) =>
-      api.post(`/collections/${id}/unlock`, { password }),
+      api.post<{ valid: boolean; unlockToken: string }>(`/collections/${id}/unlock`, { password }),
   });
 
   // ── Link mutations ────────────────────────────────────────────────────────
@@ -195,15 +208,15 @@ export function LinkboardProvider({ children }: { children: ReactNode }) {
     mutationFn: ({ id, isFavourite }: { id: string; isFavourite: boolean }) =>
       api.patch(`/links/${id}`, { isFavourite }),
     onMutate: async ({ id, isFavourite }) => {
-      await queryClient.cancelQueries({ queryKey: ["links"] });
-      const prev = queryClient.getQueryData(["links"]);
-      queryClient.setQueryData(["links"], (old: { links: ApiLink[] } | undefined) => ({
+      await queryClient.cancelQueries({ queryKey: linksKey });
+      const prev = queryClient.getQueryData(linksKey);
+      queryClient.setQueryData(linksKey, (old: { links: ApiLink[] } | undefined) => ({
         links: old?.links.map((l) => (l.id === id ? { ...l, isFavourite } : l)) ?? [],
       }));
       return { prev };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(["links"], ctx.prev);
+      if (ctx?.prev) queryClient.setQueryData(linksKey, ctx.prev);
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["links"] }),
   });
@@ -212,15 +225,15 @@ export function LinkboardProvider({ children }: { children: ReactNode }) {
     mutationFn: ({ id, isRead }: { id: string; isRead: boolean }) =>
       api.patch(`/links/${id}`, { isRead }),
     onMutate: async ({ id, isRead }) => {
-      await queryClient.cancelQueries({ queryKey: ["links"] });
-      const prev = queryClient.getQueryData(["links"]);
-      queryClient.setQueryData(["links"], (old: { links: ApiLink[] } | undefined) => ({
+      await queryClient.cancelQueries({ queryKey: linksKey });
+      const prev = queryClient.getQueryData(linksKey);
+      queryClient.setQueryData(linksKey, (old: { links: ApiLink[] } | undefined) => ({
         links: old?.links.map((l) => (l.id === id ? { ...l, isRead } : l)) ?? [],
       }));
       return { prev };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(["links"], ctx.prev);
+      if (ctx?.prev) queryClient.setQueryData(linksKey, ctx.prev);
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["links"] }),
   });
@@ -240,9 +253,9 @@ export function LinkboardProvider({ children }: { children: ReactNode }) {
     mutationFn: ({ collectionId, orderedIds }: { collectionId: string; orderedIds: string[] }) =>
       api.patch("/links/reorder", { collectionId, orderedIds }),
     onMutate: async ({ collectionId, orderedIds }) => {
-      await queryClient.cancelQueries({ queryKey: ["links"] });
-      const prev = queryClient.getQueryData(["links"]);
-      queryClient.setQueryData(["links"], (old: { links: ApiLink[] } | undefined) => {
+      await queryClient.cancelQueries({ queryKey: linksKey });
+      const prev = queryClient.getQueryData(linksKey);
+      queryClient.setQueryData(linksKey, (old: { links: ApiLink[] } | undefined) => {
         const others = old?.links.filter((l) => l.collectionId !== collectionId) ?? [];
         const reordered = orderedIds
           .map((id, i) => {
@@ -255,7 +268,7 @@ export function LinkboardProvider({ children }: { children: ReactNode }) {
       return { prev };
     },
     onError: (_err, _vars, ctx) => {
-      if (ctx?.prev) queryClient.setQueryData(["links"], ctx.prev);
+      if (ctx?.prev) queryClient.setQueryData(linksKey, ctx.prev);
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: ["links"] }),
   });
@@ -295,13 +308,13 @@ export function LinkboardProvider({ children }: { children: ReactNode }) {
     deleteLink: (id) => deleteLinkMutation.mutate(id),
     toggleFavourite: (id) => {
       const current = queryClient
-        .getQueryData<{ links: ApiLink[] }>(["links"])
+        .getQueryData<{ links: ApiLink[] }>(linksKey)
         ?.links.find((l) => l.id === id);
       if (current) toggleFavouriteMutation.mutate({ id, isFavourite: !current.isFavourite });
     },
     toggleRead: (id) => {
       const current = queryClient
-        .getQueryData<{ links: ApiLink[] }>(["links"])
+        .getQueryData<{ links: ApiLink[] }>(linksKey)
         ?.links.find((l) => l.id === id);
       if (current) toggleReadMutation.mutate({ id, isRead: !current.isRead });
     },
@@ -318,8 +331,8 @@ export function LinkboardProvider({ children }: { children: ReactNode }) {
     lockCollection: async (id, password) => {
       try {
         await lockMutation.mutateAsync({ id, password });
-        setUnlockedIds((prev) => {
-          const n = new Set(prev);
+        setUnlockedTokens((prev) => {
+          const n = new Map(prev);
           n.delete(id);
           return n;
         });
@@ -331,8 +344,8 @@ export function LinkboardProvider({ children }: { children: ReactNode }) {
     removeLock: async (id, password) => {
       try {
         await removeLockMutation.mutateAsync({ id, password });
-        setUnlockedIds((prev) => {
-          const n = new Set(prev);
+        setUnlockedTokens((prev) => {
+          const n = new Map(prev);
           n.delete(id);
           return n;
         });
@@ -343,18 +356,14 @@ export function LinkboardProvider({ children }: { children: ReactNode }) {
     },
     unlockCollection: async (id, password) => {
       try {
-        await unlockMutation.mutateAsync({ id, password });
-        setUnlockedIds((prev) => {
-          const n = new Set(prev);
-          n.add(id);
-          return n;
-        });
+        const { unlockToken } = await unlockMutation.mutateAsync({ id, password });
+        setUnlockedTokens((prev) => new Map(prev).set(id, unlockToken));
         return true;
       } catch {
         return false;
       }
     },
-    isUnlocked: (id) => unlockedIds.has(id),
+    isUnlocked: (id) => unlockedTokens.has(id),
 
     verifyPassword: async (password) => {
       try {

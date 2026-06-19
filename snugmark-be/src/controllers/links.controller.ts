@@ -1,6 +1,7 @@
 import type { Request, Response } from "express";
 import { z } from "zod";
 import * as LinksService from "../services/links.service.js";
+import { verifyUnlockToken } from "../lib/jwt.js";
 
 export const schemas = {
   create: z.object({
@@ -29,8 +30,28 @@ export const schemas = {
   }),
 };
 
+function parseUnlockTokens(header: string | undefined, userId: string): string[] {
+  if (!header) return [];
+  return header
+    .split(",")
+    .map((t) => t.trim())
+    .filter(Boolean)
+    .flatMap((token) => {
+      try {
+        const { collectionId, userId: uid } = verifyUnlockToken(token);
+        return uid === userId ? [collectionId] : [];
+      } catch {
+        return [];
+      }
+    });
+}
+
 export async function list(req: Request, res: Response): Promise<void> {
-  const links = await LinksService.listLinks(req.user!.id);
+  const unlockedCollectionIds = parseUnlockTokens(
+    req.headers["x-unlock-tokens"] as string | undefined,
+    req.user!.id
+  );
+  const links = await LinksService.listLinks(req.user!.id, unlockedCollectionIds);
   res.json({ links });
 }
 

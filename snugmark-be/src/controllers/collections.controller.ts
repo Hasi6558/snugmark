@@ -60,6 +60,10 @@ export async function removeLock(req: Request, res: Response): Promise<void> {
 
 export async function unlock(req: Request, res: Response): Promise<void> {
   const { password } = req.body as z.infer<typeof schemas.password>;
-  await CollectionsService.unlockCollection(req.user!.id, req.params.id as string, password);
-  res.json({ valid: true });
+  const { unlockToken } = await CollectionsService.unlockCollection(
+    req.user!.id,
+    req.params.id as string,
+    password
+  );
+  res.json({ valid: true, unlockToken });
 }

@@ -39,8 +39,22 @@ export interface UpdateLinkData {
   isRead?: boolean;
 }
 
-export async function listLinks(userId: string) {
-  return Link.find({ userId }).sort({ collectionId: 1, position: 1 });
+export async function listLinks(userId: string, unlockedCollectionIds: string[] = []) {
+  const lockedCollections = await Collection.find({ userId, locked: true }, { _id: 1 });
+
+  if (lockedCollections.length === 0) {
+    return Link.find({ userId }).sort({ collectionId: 1, position: 1 });
+  }
+
+  // Links in a locked collection are excluded unless the client holds a valid unlock token for it.
+  const inaccessibleIds = lockedCollections
+    .map((c) => c._id.toString())
+    .filter((id) => !unlockedCollectionIds.includes(id));
+
+  return Link.find({
+    userId,
+    ...(inaccessibleIds.length > 0 ? { collectionId: { $nin: inaccessibleIds } } : {}),
+  }).sort({ collectionId: 1, position: 1 });
 }
 
 export async function createLink(userId: string, data: CreateLinkData) {
