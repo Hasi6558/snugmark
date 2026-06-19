@@ -26,6 +26,7 @@ const registerLimiter = rateLimit({
 router.post("/register", registerLimiter, validate(AuthController.schemas.register), asyncHandler(AuthController.register));
 router.post("/login", loginLimiter, validate(AuthController.schemas.login), asyncHandler(AuthController.login));
 router.get("/me", requireAuth, asyncHandler(AuthController.me));
+router.post("/logout", requireAuth, asyncHandler(AuthController.logout));
 router.post("/verify-password", requireAuth, validate(AuthController.schemas.verifyPassword), asyncHandler(AuthController.verifyPassword));
 
 export default router;

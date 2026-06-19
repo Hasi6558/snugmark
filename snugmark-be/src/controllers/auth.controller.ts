@@ -39,3 +39,7 @@ export async function verifyPassword(req: Request, res: Response): Promise<void>
   const valid = await AuthService.verifyUserPassword(req.user!.id, password);
   res.json({ valid });
 }
+
+export async function logout(_req: Request, res: Response): Promise<void> {
+  res.json({ success: true });
+}

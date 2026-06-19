@@ -1,5 +1,7 @@
 import { useMemo, useState } from "react";
 import { useStore, type Collection } from "@/lib/linkboard-store";
+import { useQuery } from "@tanstack/react-query";
+import { useNavigate } from "@tanstack/react-router";
 import {
   DndContext,
   PointerSensor,
@@ -27,6 +29,7 @@ import {
   Unlock,
   LockOpen,
   Home,
+  LogOut,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -38,12 +41,31 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { ConfirmDialog } from "./ConfirmDialog";
 import { PasswordDialog } from "./PasswordDialog";
+import { api, clearToken } from "@/lib/api/client";
 
 export function Sidebar() {
   const { collections, selectedCollectionId, view, goHome, addCollection, reorderCollections } =
     useStore();
   const [addingRoot, setAddingRoot] = useState(false);
   const [newName, setNewName] = useState("");
+  const navigate = useNavigate();
+
+  const { data: meData } = useQuery({
+    queryKey: ["me"],
+    queryFn: () => api.get<{ user: { name: string; email: string } }>("/auth/me"),
+    staleTime: Infinity,
+  });
+  const user = meData?.user;
+
+  const handleLogout = async () => {
+    try {
+      await api.post("/auth/logout");
+    } catch {
+      // proceed with client-side logout regardless
+    }
+    clearToken();
+    await navigate({ to: "/login" });
+  };
 
   const topLevel = useMemo(
     () => collections.filter((c) => c.parentId === null).sort((a, b) => a.order - b.order),
@@ -134,13 +156,20 @@ export function Sidebar() {
 
       <div className="border-t px-4 py-3">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-accent text-accent-foreground text-xs font-semibold">
-            S
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-accent text-accent-foreground text-xs font-semibold">
+            {user?.name?.[0]?.toUpperCase() ?? "?"}
           </div>
           <div className="min-w-0 flex-1">
-            <p className="truncate text-sm font-medium">Sam</p>
-            <p className="truncate text-xs text-muted-foreground">sam@linkboard.app</p>
+            <p className="truncate text-sm font-medium">{user?.name ?? "—"}</p>
+            <p className="truncate text-xs text-muted-foreground">{user?.email ?? ""}</p>
           </div>
+          <button
+            onClick={handleLogout}
+            title="Sign out"
+            className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground hover:bg-sidebar-accent hover:text-sidebar-accent-foreground transition-colors"
+          >
+            <LogOut className="h-4 w-4" />
+          </button>
         </div>
       </div>
 
