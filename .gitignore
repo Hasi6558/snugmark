@@ -28,8 +28,9 @@ coverage/
 dist/
 build/
 
-# Launcher executable
+# Launcher executable and per-machine config
 snugmark.exe
+snugmark-launcher.json
 
 # Cache
 .cache/
