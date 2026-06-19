@@ -13,7 +13,15 @@ import metadataRoutes from "./routes/metadata.routes.js";
 export function createApp(): Express {
   const app = express();
 
-  app.use(cors({ origin: env.CORS_ORIGIN }));
+  const allowedOrigins = env.CORS_ORIGIN.split(",").map((o) => o.trim());
+  app.use(
+    cors({
+      origin: (origin, cb) => {
+        if (!origin || allowedOrigins.includes(origin)) return cb(null, true);
+        cb(new Error(`CORS: origin ${origin} not allowed`));
+      },
+    }),
+  );
   app.use(express.json());
 
   // Health check — useful for uptime probes and verifying the server is up.
