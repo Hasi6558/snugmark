@@ -33,6 +33,7 @@ export function LinkModal({ open, onOpenChange, collectionId, editing }: Props) 
   const [fetching, setFetching] = useState(false);
   const [showSuggest, setShowSuggest] = useState(false);
   const tagWrapRef = useRef<HTMLDivElement>(null);
+  const isPastingRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -52,13 +53,15 @@ export function LinkModal({ open, onOpenChange, collectionId, editing }: Props) 
     setTagInput("");
   }, [open, editing]);
 
-  const handleFetchMeta = async () => {
-    if (!url.trim()) return;
+  const handleFetchMeta = async (urlOverride?: string) => {
+    const target = (urlOverride ?? url).trim();
+    if (!target) return;
+    if (fetching) return; // already in flight — skip duplicate call
     setFetching(true);
     try {
       const meta = await api.post<{ title: string; description: string; favicon: string }>(
         "/metadata",
-        { url },
+        { url: target },
       );
       if (!title && meta.title) setTitle(meta.title);
       if (!description && meta.description) setDescription(meta.description);
@@ -122,12 +125,24 @@ export function LinkModal({ open, onOpenChange, collectionId, editing }: Props) 
                 id="url"
                 placeholder="https://example.com"
                 value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onBlur={handleFetchMeta}
+                onChange={(e) => {
+                  if (!isPastingRef.current) setUrl(e.target.value);
+                }}
+                onBlur={() => {
+                  if (isPastingRef.current) {
+                    isPastingRef.current = false;
+                    return; // fetch already scheduled by onPaste
+                  }
+                  void handleFetchMeta();
+                }}
                 onPaste={(e) => {
                   const v = e.clipboardData.getData("text");
+                  isPastingRef.current = true;
                   setUrl(v);
-                  setTimeout(handleFetchMeta, 0);
+                  setTimeout(() => {
+                    isPastingRef.current = false;
+                    void handleFetchMeta(v);
+                  }, 0);
                 }}
                 className="rounded-xl"
               />

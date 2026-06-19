@@ -17,8 +17,8 @@ const root = isPackaged
 const BE_DIR = path.join(root, 'snugmark-be');
 const FE_DIR = path.join(root, 'snugmark-fe');
 const CONFIG_FILE = path.join(root, 'snugmark-launcher.json');
-const BE_PORT = 4000;
-const FE_PORT = 8080;
+const BE_PORT = 5201;
+const FE_PORT = 5202;
 const FE_URL = `http://localhost:${FE_PORT}`;
 
 const children = [];

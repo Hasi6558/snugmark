@@ -5,7 +5,7 @@ import * as CollectionsService from "../services/collections.service.js";
 export const schemas = {
   create: z.object({
     name: z.string().min(1, "Name is required").trim(),
-    parentId: z.string().optional(),
+    parentId: z.string().nullish(),
   }),
   rename: z.object({
     name: z.string().min(1, "Name is required").trim(),
@@ -25,7 +25,7 @@ export async function list(req: Request, res: Response): Promise<void> {
 
 export async function create(req: Request, res: Response): Promise<void> {
   const { name, parentId } = req.body as z.infer<typeof schemas.create>;
-  const collection = await CollectionsService.createCollection(req.user!.id, name, parentId);
+  const collection = await CollectionsService.createCollection(req.user!.id, name, parentId ?? undefined);
   res.status(201).json({ collection });
 }
 
