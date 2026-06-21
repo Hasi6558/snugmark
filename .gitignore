@@ -48,7 +48,7 @@ Thumbs.db
 tmp/
 temp/
 
-*.md
+
 # Optional: package lock files (usually NOT ignored)
 # package-lock.json
 # yarn.lock

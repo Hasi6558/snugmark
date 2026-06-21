@@ -1,3 +1,6 @@
+﻿// Copyright (c) 2026 Hasindu Shehan Liyanage. All Rights Reserved.
+// This code may not be copied, modified, distributed, or used in production without written permission.
+
 import { connectDB, disconnectDB } from "../db.js";
 import { User } from "../models/User.js";
 import { Collection } from "../models/Collection.js";

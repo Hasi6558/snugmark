@@ -1,3 +1,6 @@
+﻿// Copyright (c) 2026 Hasindu Shehan Liyanage. All Rights Reserved.
+// This code may not be copied, modified, distributed, or used in production without written permission.
+
 import { Types } from "mongoose";
 import { Collection } from "../models/Collection.js";
 import { Link } from "../models/Link.js";
