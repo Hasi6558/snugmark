@@ -1,3 +1,6 @@
+﻿// Copyright (c) 2026 Hasindu Shehan Liyanage. All Rights Reserved.
+// This code may not be copied, modified, distributed, or used in production without written permission.
+
 import { createFileRoute, Navigate } from "@tanstack/react-router";
 import { useState, useEffect } from "react";
 import { LinkboardProvider, useStore } from "@/lib/linkboard-store";
@@ -5,15 +8,18 @@ import { Sidebar } from "@/components/linkboard/Sidebar";
 import { CollectionView } from "@/components/linkboard/CollectionView";
 import { HomeView } from "@/components/linkboard/HomeView";
 import { Toaster } from "@/components/ui/sonner";
-
-const AUTH_KEY = "linkboard.auth";
+import { api, getToken, clearToken } from "@/lib/api/client";
 
 export const Route = createFileRoute("/")({
   head: () => ({
     meta: [
-      { title: "Linkboard — A calm place for your links" },
-      { name: "description", content: "Save, organize, and revisit the web's best with collections, tags, and favourites." },
-      { property: "og:title", content: "Linkboard" },
+      { title: "Snugmark — A calm place for your links" },
+      {
+        name: "description",
+        content:
+          "Save, organize, and revisit the web's best with collections, tags, and favourites.",
+      },
+      { property: "og:title", content: "Snugmark" },
       { property: "og:description", content: "A calm place for your links." },
     ],
   }),
@@ -24,7 +30,19 @@ function Home() {
   const [authed, setAuthed] = useState<boolean | null>(null);
 
   useEffect(() => {
-    setAuthed(typeof window !== "undefined" && !!localStorage.getItem(AUTH_KEY));
+    const token = getToken();
+    if (!token) {
+      setAuthed(false);
+      return;
+    }
+
+    api
+      .get("/auth/me")
+      .then(() => setAuthed(true))
+      .catch(() => {
+        clearToken();
+        setAuthed(false);
+      });
   }, []);
 
   if (authed === null) return null;

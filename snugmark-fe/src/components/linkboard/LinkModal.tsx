@@ -1,6 +1,13 @@
+﻿// Copyright (c) 2026 Hasindu Shehan Liyanage. All Rights Reserved.
+// This code may not be copied, modified, distributed, or used in production without written permission.
+
 import { useEffect, useRef, useState } from "react";
 import {
-  Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle,
+  Dialog,
+  DialogContent,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -9,6 +16,7 @@ import { Label } from "@/components/ui/label";
 import { useStore, type Link } from "@/lib/linkboard-store";
 import { TagPill } from "./TagPill";
 import { Loader2 } from "lucide-react";
+import { api } from "@/lib/api/client";
 
 type Props = {
   open: boolean;
@@ -16,28 +24,6 @@ type Props = {
   collectionId: string;
   editing?: Link | null;
 };
-
-function mockFetchMeta(url: string): Promise<{ title: string; favicon: string }> {
-  return new Promise((resolve) => {
-    setTimeout(() => {
-      try {
-        const u = new URL(url);
-        const host = u.hostname.replace(/^www\./, "");
-        const title = host
-          .split(".")[0]
-          .replace(/-/g, " ")
-          .replace(/^\w/, (c) => c.toUpperCase()) +
-          (u.pathname && u.pathname !== "/" ? " — " + decodeURIComponent(u.pathname.split("/").filter(Boolean).pop() || "").replace(/[-_]/g, " ") : "");
-        resolve({
-          title: title.trim(),
-          favicon: `https://www.google.com/s2/favicons?domain=${host}&sz=64`,
-        });
-      } catch {
-        resolve({ title: "", favicon: "" });
-      }
-    }, 450);
-  });
-}
 
 export function LinkModal({ open, onOpenChange, collectionId, editing }: Props) {
   const { tags, addTag, addLink, updateLink } = useStore();
@@ -50,6 +36,7 @@ export function LinkModal({ open, onOpenChange, collectionId, editing }: Props) 
   const [fetching, setFetching] = useState(false);
   const [showSuggest, setShowSuggest] = useState(false);
   const tagWrapRef = useRef<HTMLDivElement>(null);
+  const isPastingRef = useRef(false);
 
   useEffect(() => {
     if (!open) return;
@@ -60,18 +47,33 @@ export function LinkModal({ open, onOpenChange, collectionId, editing }: Props) 
       setFavicon(editing.favicon);
       setTagIds(editing.tagIds);
     } else {
-      setUrl(""); setTitle(""); setDescription(""); setFavicon(""); setTagIds([]);
+      setUrl("");
+      setTitle("");
+      setDescription("");
+      setFavicon("");
+      setTagIds([]);
     }
     setTagInput("");
   }, [open, editing]);
 
-  const handleFetchMeta = async () => {
-    if (!url.trim()) return;
+  const handleFetchMeta = async (urlOverride?: string) => {
+    const target = (urlOverride ?? url).trim();
+    if (!target) return;
+    if (fetching) return; // already in flight — skip duplicate call
     setFetching(true);
-    const meta = await mockFetchMeta(url);
-    setFetching(false);
-    if (!title && meta.title) setTitle(meta.title);
-    if (meta.favicon) setFavicon(meta.favicon);
+    try {
+      const meta = await api.post<{ title: string; description: string; favicon: string }>(
+        "/metadata",
+        { url: target },
+      );
+      if (!title && meta.title) setTitle(meta.title);
+      if (!description && meta.description) setDescription(meta.description);
+      if (meta.favicon) setFavicon(meta.favicon);
+    } catch {
+      // Silently ignore — user can fill in title manually
+    } finally {
+      setFetching(false);
+    }
   };
 
   const selectedTags = tagIds
@@ -79,15 +81,13 @@ export function LinkModal({ open, onOpenChange, collectionId, editing }: Props) 
     .filter((t): t is NonNullable<typeof t> => Boolean(t));
 
   const suggestions = tags.filter(
-    (t) =>
-      !tagIds.includes(t.id) &&
-      t.name.toLowerCase().includes(tagInput.toLowerCase().trim())
+    (t) => !tagIds.includes(t.id) && t.name.toLowerCase().includes(tagInput.toLowerCase().trim()),
   );
 
-  const commitTagInput = () => {
+  const commitTagInput = async () => {
     const name = tagInput.trim();
     if (!name) return;
-    const t = addTag(name);
+    const t = await addTag(name);
     if (!tagIds.includes(t.id)) setTagIds((p) => [...p, t.id]);
     setTagInput("");
   };
@@ -98,9 +98,14 @@ export function LinkModal({ open, onOpenChange, collectionId, editing }: Props) 
       updateLink(editing.id, { url, title, description, favicon, tagIds });
     } else {
       addLink({
-        collectionId, url, title, description,
-        favicon: favicon || `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=64`,
-        isFavourite: false, tagIds,
+        collectionId,
+        url,
+        title,
+        description,
+        favicon:
+          favicon || `https://www.google.com/s2/favicons?domain=${new URL(url).hostname}&sz=64`,
+        isFavourite: false,
+        tagIds,
       });
     }
     onOpenChange(false);
@@ -120,13 +125,27 @@ export function LinkModal({ open, onOpenChange, collectionId, editing }: Props) 
             <Label htmlFor="url">URL</Label>
             <div className="relative">
               <Input
-                id="url" placeholder="https://example.com" value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                onBlur={handleFetchMeta}
+                id="url"
+                placeholder="https://example.com"
+                value={url}
+                onChange={(e) => {
+                  if (!isPastingRef.current) setUrl(e.target.value);
+                }}
+                onBlur={() => {
+                  if (isPastingRef.current) {
+                    isPastingRef.current = false;
+                    return; // fetch already scheduled by onPaste
+                  }
+                  void handleFetchMeta();
+                }}
                 onPaste={(e) => {
                   const v = e.clipboardData.getData("text");
+                  isPastingRef.current = true;
                   setUrl(v);
-                  setTimeout(handleFetchMeta, 0);
+                  setTimeout(() => {
+                    isPastingRef.current = false;
+                    void handleFetchMeta(v);
+                  }, 0);
                 }}
                 className="rounded-xl"
               />
@@ -139,15 +158,20 @@ export function LinkModal({ open, onOpenChange, collectionId, editing }: Props) 
           <div className="space-y-1.5">
             <Label htmlFor="title">Title</Label>
             <Input
-              id="title" value={title} onChange={(e) => setTitle(e.target.value)}
-              placeholder="Auto-filled from URL" className="rounded-xl"
+              id="title"
+              value={title}
+              onChange={(e) => setTitle(e.target.value)}
+              placeholder="Auto-filled from URL"
+              className="rounded-xl"
             />
           </div>
 
           <div className="space-y-1.5">
             <Label htmlFor="desc">Description</Label>
             <Textarea
-              id="desc" value={description} rows={3}
+              id="desc"
+              value={description}
+              rows={3}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="A short note for future you"
               className="resize-none rounded-xl"
@@ -161,16 +185,25 @@ export function LinkModal({ open, onOpenChange, collectionId, editing }: Props) 
               className="relative flex min-h-11 flex-wrap items-center gap-1.5 rounded-xl border bg-card px-2 py-1.5"
             >
               {selectedTags.map((t) => (
-                <TagPill key={t.id} tag={t} onRemove={() =>
-                  setTagIds((p) => p.filter((id) => id !== t.id))} />
+                <TagPill
+                  key={t.id}
+                  tag={t}
+                  onRemove={() => setTagIds((p) => p.filter((id) => id !== t.id))}
+                />
               ))}
               <input
                 value={tagInput}
-                onChange={(e) => { setTagInput(e.target.value); setShowSuggest(true); }}
+                onChange={(e) => {
+                  setTagInput(e.target.value);
+                  setShowSuggest(true);
+                }}
                 onFocus={() => setShowSuggest(true)}
                 onBlur={() => setTimeout(() => setShowSuggest(false), 150)}
                 onKeyDown={(e) => {
-                  if (e.key === "Enter") { e.preventDefault(); commitTagInput(); }
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    void commitTagInput();
+                  }
                   if (e.key === "Backspace" && !tagInput && tagIds.length) {
                     setTagIds((p) => p.slice(0, -1));
                   }
@@ -182,7 +215,8 @@ export function LinkModal({ open, onOpenChange, collectionId, editing }: Props) 
                 <div className="absolute left-0 right-0 top-full z-10 mt-1 max-h-48 overflow-auto rounded-xl border bg-popover p-1 shadow-sm">
                   {suggestions.map((t) => (
                     <button
-                      key={t.id} type="button"
+                      key={t.id}
+                      type="button"
                       onMouseDown={(e) => {
                         e.preventDefault();
                         setTagIds((p) => [...p, t.id]);
@@ -193,15 +227,20 @@ export function LinkModal({ open, onOpenChange, collectionId, editing }: Props) 
                       <TagPill tag={t} />
                     </button>
                   ))}
-                  {tagInput.trim() && !tags.some((t) => t.name.toLowerCase() === tagInput.trim().toLowerCase()) && (
-                    <button
-                      type="button"
-                      onMouseDown={(e) => { e.preventDefault(); commitTagInput(); }}
-                      className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent"
-                    >
-                      Create "<span className="font-medium text-foreground">{tagInput.trim()}</span>"
-                    </button>
-                  )}
+                  {tagInput.trim() &&
+                    !tags.some((t) => t.name.toLowerCase() === tagInput.trim().toLowerCase()) && (
+                      <button
+                        type="button"
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          void commitTagInput();
+                        }}
+                        className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-sm text-muted-foreground hover:bg-accent"
+                      >
+                        Create "
+                        <span className="font-medium text-foreground">{tagInput.trim()}</span>"
+                      </button>
+                    )}
                 </div>
               )}
             </div>
@@ -212,7 +251,11 @@ export function LinkModal({ open, onOpenChange, collectionId, editing }: Props) 
           <Button variant="ghost" className="rounded-xl" onClick={() => onOpenChange(false)}>
             Cancel
           </Button>
-          <Button className="rounded-xl" onClick={handleSave} disabled={!url.trim() || !title.trim()}>
+          <Button
+            className="rounded-xl"
+            onClick={handleSave}
+            disabled={!url.trim() || !title.trim()}
+          >
             {editing ? "Save changes" : "Add link"}
           </Button>
         </DialogFooter>

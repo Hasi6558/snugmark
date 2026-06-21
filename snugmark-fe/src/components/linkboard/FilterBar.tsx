@@ -1,9 +1,17 @@
+﻿// Copyright (c) 2026 Hasindu Shehan Liyanage. All Rights Reserved.
+// This code may not be copied, modified, distributed, or used in production without written permission.
+
 import { useStore, type Tag } from "@/lib/linkboard-store";
 import { Button } from "@/components/ui/button";
 import {
-  DropdownMenu, DropdownMenuContent, DropdownMenuTrigger,
-  DropdownMenuCheckboxItem, DropdownMenuLabel, DropdownMenuSeparator,
-  DropdownMenuRadioGroup, DropdownMenuRadioItem,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuTrigger,
+  DropdownMenuCheckboxItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
 } from "@/components/ui/dropdown-menu";
 import { TagPill } from "./TagPill";
 import { Heart, Tag as TagIcon, FolderTree, X, BookOpen } from "lucide-react";
@@ -16,7 +24,10 @@ export type Filters = {
 };
 
 export const emptyFilters: Filters = {
-  tagIds: [], collectionId: null, favouriteOnly: false, readState: "all",
+  tagIds: [],
+  collectionId: null,
+  favouriteOnly: false,
+  readState: "all",
 };
 
 export function isFiltersActive(f: Filters) {
@@ -24,7 +35,9 @@ export function isFiltersActive(f: Filters) {
 }
 
 export function FilterBar({
-  filters, onChange, showCollection = false,
+  filters,
+  onChange,
+  showCollection = false,
 }: {
   filters: Filters;
   onChange: (f: Filters) => void;
@@ -92,13 +105,16 @@ export function FilterBar({
             <DropdownMenuContent align="start" className="rounded-xl max-h-72 overflow-auto">
               <DropdownMenuRadioGroup
                 value={filters.collectionId ?? "__all"}
-                onValueChange={(v) => onChange({ ...filters, collectionId: v === "__all" ? null : v })}
+                onValueChange={(v) =>
+                  onChange({ ...filters, collectionId: v === "__all" ? null : v })
+                }
               >
                 <DropdownMenuRadioItem value="__all">All collections</DropdownMenuRadioItem>
                 <DropdownMenuSeparator />
                 {collections.map((c) => (
                   <DropdownMenuRadioItem key={c.id} value={c.id}>
-                    {c.parentId ? "↳ " : ""}{c.name}
+                    {c.parentId ? "↳ " : ""}
+                    {c.name}
                   </DropdownMenuRadioItem>
                 ))}
               </DropdownMenuRadioGroup>
@@ -112,10 +128,7 @@ export function FilterBar({
           className="rounded-xl gap-1.5"
           onClick={() => onChange({ ...filters, favouriteOnly: !filters.favouriteOnly })}
         >
-          <Heart
-            className="h-3.5 w-3.5"
-            fill={filters.favouriteOnly ? "currentColor" : "none"}
-          />
+          <Heart className="h-3.5 w-3.5" fill={filters.favouriteOnly ? "currentColor" : "none"} />
           Favourite
         </Button>
 
@@ -207,9 +220,7 @@ export function applyFilters(
     if (filters.collectionId && l.collectionId !== filters.collectionId) return false;
     if (filters.tagIds.length && !filters.tagIds.every((id) => l.tagIds.includes(id))) return false;
     if (q) {
-      const tagNames = l.tagIds
-        .map((id) => tags.find((t) => t.id === id)?.name ?? "")
-        .join(" ");
+      const tagNames = l.tagIds.map((id) => tags.find((t) => t.id === id)?.name ?? "").join(" ");
       const hay = `${l.title} ${l.description} ${l.url} ${tagNames}`.toLowerCase();
       if (!hay.includes(q)) return false;
     }

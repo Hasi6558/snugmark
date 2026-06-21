@@ -1,12 +1,16 @@
+﻿// Copyright (c) 2026 Hasindu Shehan Liyanage. All Rights Reserved.
+// This code may not be copied, modified, distributed, or used in production without written permission.
+
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Bookmark } from "lucide-react";
+import { api, setToken, ApiError } from "@/lib/api/client";
 
 export const Route = createFileRoute("/register")({
-  head: () => ({ meta: [{ title: "Create account — Linkboard" }] }),
+  head: () => ({ meta: [{ title: "Create account — Snugmark" }] }),
   component: RegisterPage,
 });
 
@@ -15,12 +19,26 @@ function RegisterPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    localStorage.setItem("linkboard.auth", JSON.stringify({ email, name }));
-    localStorage.setItem("linkboard.password", password);
-    navigate({ to: "/" });
+    setError(null);
+    setLoading(true);
+    try {
+      const { token } = await api.post<{ token: string }>("/auth/register", {
+        name,
+        email,
+        password,
+      });
+      setToken(token);
+      await navigate({ to: "/" });
+    } catch (err) {
+      setError(err instanceof ApiError ? err.message : "Something went wrong. Please try again.");
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -35,31 +53,49 @@ function RegisterPage() {
         </div>
 
         <form onSubmit={handleSubmit} className="rounded-2xl border bg-card p-6 space-y-4">
+          {error && (
+            <p className="rounded-xl bg-destructive/10 px-3 py-2 text-sm text-destructive">
+              {error}
+            </p>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="name">Name</Label>
             <Input
-              id="name" required value={name}
+              id="name"
+              required
+              value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Sam" className="rounded-xl"
+              placeholder="Sam"
+              className="rounded-xl"
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="email">Email</Label>
             <Input
-              id="email" type="email" required value={email}
+              id="email"
+              type="email"
+              required
+              value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com" className="rounded-xl"
+              placeholder="you@example.com"
+              className="rounded-xl"
             />
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="password">Password</Label>
             <Input
-              id="password" type="password" required value={password}
+              id="password"
+              type="password"
+              required
+              value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="At least 8 characters" className="rounded-xl"
+              placeholder="At least 8 characters"
+              className="rounded-xl"
             />
           </div>
-          <Button type="submit" className="w-full rounded-xl">Create account</Button>
+          <Button type="submit" className="w-full rounded-xl" disabled={loading}>
+            {loading ? "Creating account…" : "Create account"}
+          </Button>
         </form>
 
         <p className="mt-5 text-center text-sm text-muted-foreground">

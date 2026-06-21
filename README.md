@@ -22,6 +22,7 @@ Snugmark is a self-hosted personal bookmark manager. It is a full-stack monorepo
 - [Data Models](#data-models)
 - [Architecture Overview](#architecture-overview)
 - [Scripts](#scripts)
+- [License](#license)
 
 ---
 
@@ -385,3 +386,13 @@ All routes are prefixed with `/api`. Protected routes require an `Authorization:
 - **Collection locking** is a UI-level feature: locked collection links are still returned by the API but hidden in the interface until unlocked for the current session. Stricter server-side enforcement (per-session unlock tokens) is a planned future improvement.
 - **Metadata SSRF guard**: the metadata endpoint blocks requests to internal/private IP ranges (`localhost`, `127.x`, `10.x`, `192.168.x`, `169.254.x`) to prevent server-side request forgery.
 - **Token expiry**: the default JWT lifetime is 7 days. Refresh-token flows are out of scope for the current version.
+
+---
+
+## License
+
+This project is publicly visible for educational and portfolio purposes only.
+
+All rights are reserved by the author. No commercial use, production deployment, redistribution, modification, or derivative works are permitted without explicit written permission.
+
+See [LICENSE](./LICENSE) for the full license text.

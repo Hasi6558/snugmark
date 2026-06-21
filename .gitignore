@@ -28,6 +28,10 @@ coverage/
 dist/
 build/
 
+# Launcher executable and per-machine config
+snugmark.exe
+snugmark-launcher.json
+
 # Cache
 .cache/
 .npm/
@@ -44,7 +48,7 @@ Thumbs.db
 tmp/
 temp/
 
-*.md
+
 # Optional: package lock files (usually NOT ignored)
 # package-lock.json
 # yarn.lock
